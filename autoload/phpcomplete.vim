@@ -1010,17 +1010,35 @@ function! phpcomplete#JumpToDefinition(mode) " {{{
 	endif
 
 	let tags = phpcomplete#GetTaglist(symbol)
+	let match_tags_count = 0
 
 	let symbol_file = fnamemodify(symbol_file, ':p')
 	let tag_position = -1
 	let i = 1
+
+	let current_file = fnamemodify(expand('%:p'), ':p')
+	let current_file_i = -1
+	let j = 1
+
 	for tag in tags
-		if fnamemodify(tag.filename, ":p") == symbol_file && tag.cmd =~ tag_line
-			let tag_position = i
-			break
+		if tag.name == symbol
+			let match_tags_count += 1
+		endif
+		if tag.cmd =~ tag_line
+			if fnamemodify(tag.filename, ":p") == symbol_file  && tag_position == -1
+				let tag_position = i
+			endif
+			if fnamemodify(tag.filename, ":p") == current_file && current_file_i == -1
+				let current_file_i = j
+			endif
 		endif
 		let i += 1
+		let j += 1
 	endfor
+
+	if current_file_i != -1
+		let tag_position = tag_position + match_tags_count - current_file_i
+	endif
 
 	if tag_position == -1
 		silent! exec notfound_commands.symbol
@@ -1834,6 +1852,8 @@ function! phpcomplete#GetClassName(start_line, context, current_namespace, impor
 	let class_candidate_imports = a:imports
 	let methodstack = phpcomplete#GetMethodStack(a:context)
 
+	let last_caller_op_index = strridx(a:context, '->')
+	let caller_expr = strpart(a:context, 0, last_caller_op_index)
 	if a:context =~? '\$this->' || a:context =~? '\(self\|static\)::' || a:context =~? 'parent::'
 		let i = 1
 		while i < a:start_line
@@ -1850,11 +1870,16 @@ function! phpcomplete#GetClassName(start_line, context, current_namespace, impor
 				let extended_class = matchstr(line, '\cclass\s\+'.class_name_pattern.'\s\+extends\s\+\zs'.class_name_pattern.'\ze')
 
 				let classname_candidate = a:context =~? 'parent::' ? extended_class : class_name
-				if classname_candidate != ''
-					let [classname_candidate, class_candidate_namespace] = phpcomplete#GetCallChainReturnType(classname_candidate, class_candidate_namespace, class_candidate_imports, methodstack)
-					" return absolute classname, without leading \
-					return (class_candidate_namespace == '\' || class_candidate_namespace == '') ? classname_candidate : class_candidate_namespace.'\'.classname_candidate
-				endif
+			endif
+
+			if classname_candidate != ''
+				let [classname_candidate, class_candidate_namespace] = phpcomplete#GetCallChainReturnType(classname_candidate, class_candidate_namespace, class_candidate_imports, methodstack)
+				" return absolute classname, without leading \
+				return (class_candidate_namespace == '\' || class_candidate_namespace == '') ? classname_candidate : class_candidate_namespace.'\'.classname_candidate
+			elseif line =~ '^ *'.caller_expr.' = '
+				let classname_candidate = matchstr(line, '\cnew\s\+\zs'.class_name_pattern.'\ze')
+				let classname_candidate = stridx(classname_candidate, '\') == 0 ? classname_candidate : class_candidate_namespace.'\'.classname_candidate 
+				return classname_candidate
 			endif
 
 			let i += 1
