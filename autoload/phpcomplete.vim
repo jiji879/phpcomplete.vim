@@ -1036,8 +1036,8 @@ function! phpcomplete#JumpToDefinition(mode) " {{{
 		let j += 1
 	endfor
 
-	if current_file_i != -1
-		let tag_position = tag_position + match_tags_count - current_file_i
+	if current_file_i != -1 && tag_position < current_file_i
+		let tag_position += 1
 	endif
 
 	if tag_position == -1
@@ -1878,8 +1878,18 @@ function! phpcomplete#GetClassName(start_line, context, current_namespace, impor
 				return (class_candidate_namespace == '\' || class_candidate_namespace == '') ? classname_candidate : class_candidate_namespace.'\'.classname_candidate
 			elseif line =~ '^ *'.caller_expr.' = '
 				let classname_candidate = matchstr(line, '\cnew\s\+\zs'.class_name_pattern.'\ze')
-				let classname_candidate = stridx(classname_candidate, '\') == 0 ? classname_candidate : class_candidate_namespace.'\'.classname_candidate 
-				return classname_candidate
+				if classname_candidate != ''
+					let classname_candidate = stridx(classname_candidate, '\') == 0 ? classname_candidate : class_candidate_namespace.'\'.classname_candidate 
+					return classname_candidate
+				else
+					" anything else, good luck - -
+					let right_symbol = split(line, ' = ')[1]
+					return phpcomplete#GetClassName(a:start_line - i, right_symbol, a:current_namespace, a:imports)
+				endif
+			" ci
+			elseif line =~ 'load\->model'
+				let classname_candidate = matchstr(line, "'.*'")[1:-2]
+				return substitute(classname_candidate, '/', '\\', 'g')
 			endif
 
 			let i += 1
